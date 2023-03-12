@@ -1,6 +1,6 @@
 {
   "name": "solid-liveblocks",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "A set of Solid hooks and providers to use Liveblocks declaratively. Liveblocks is the all-in-one toolkit to build collaborative products like Figma, Notion, and more.",
   "author": "tmns",
   "license": "MIT",
