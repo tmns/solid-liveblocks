@@ -9,7 +9,7 @@ import type {
   LsonObject,
   Others,
   Room,
-  User,
+  User
 } from '@liveblocks/client'
 import { shallow } from '@liveblocks/client'
 import type { RoomInitializers, ToImmutable } from '@liveblocks/core'
@@ -17,9 +17,11 @@ import {
   createContext,
   createEffect,
   createMemo,
+  createResource,
   createSignal,
   onCleanup,
-  useContext,
+  Resource,
+  useContext
 } from 'solid-js'
 import type { MutationContext, OmitFirstArg, RoomContextBundle, RoomProviderProps } from './types'
 
@@ -395,6 +397,201 @@ export function createRoomContext<
     return useRoom().batch
   }
 
+  ////////////////////////////////////////////////////////////////////////////////////////
+  // Suspense
+  ////////////////////////////////////////////////////////////////////////////////////////
+
+  function useOthersSuspense(): Resource<Others<TPresence, TUserMeta>>
+  function useOthersSuspense<T>(
+    selector: (others: Others<TPresence, TUserMeta>) => T,
+    isEqual?: (prev: T, curr: T) => boolean,
+  ): Resource<T>
+  function useOthersSuspense<T>(
+    selector?: (others: Others<TPresence, TUserMeta>) => T,
+    isEqual?: (prev: T, curr: T) => boolean,
+  ): Resource<T | Others<TPresence, TUserMeta>> {
+    const room = useRoom()
+
+    const select = selector ?? (identity as (others: Others<TPresence, TUserMeta>) => T)
+
+    const [state, { mutate }] = createResource(
+      () =>
+        new Promise<T>((res) => {
+          if (room.isSelfAware()) return res(select(room.getOthers()))
+
+          const unsub = room.events.connection.subscribeOnce(() => {
+            return res(select(room.getOthers()))
+          })
+
+          onCleanup(() => unsub())
+        }),
+    )
+
+    const unsubscribe = room.subscribe('others', (others) => {
+      const selectedState = select(others)
+      if (!isEqual || !isEqual(state()!, selectedState)) {
+        mutate(() => selectedState)
+      }
+    })
+    onCleanup(() => unsubscribe())
+
+    return state
+  }
+
+  function useOthersConnectionIdsSuspense(): Resource<readonly number[]> {
+    return useOthersSuspense(connectionIdSelector, shallow)
+  }
+
+  function useOthersMappedSuspense<T>(
+    itemSelector: (other: User<TPresence, TUserMeta>) => T,
+    itemIsEqual?: (prev: T, curr: T) => boolean,
+  ): Resource<ReadonlyArray<readonly [connectionId: number, data: T]>> {
+    const wrappedSelector = (others: Others<TPresence, TUserMeta>) =>
+      others.map((other) => [other.connectionId, itemSelector(other)] as const)
+
+    const wrappedIsEqual = (
+      a: ReadonlyArray<readonly [connectionId: number, data: T]>,
+      b: ReadonlyArray<readonly [connectionId: number, data: T]>,
+    ): boolean => {
+      const eq = itemIsEqual ?? Object.is
+      return (
+        a.length === b.length &&
+        a.every((atuple, index) => {
+          const btuple = b[index]
+          return atuple[0] === btuple[0] && eq(atuple[1], btuple[1])
+        })
+      )
+    }
+
+    return useOthersSuspense(wrappedSelector, wrappedIsEqual)
+  }
+
+  function useOtherSuspense<T>(
+    connectionId: number,
+    selector: (other: User<TPresence, TUserMeta>) => T,
+    isEqual?: (prev: T, curr: T) => boolean,
+  ): Resource<T> {
+    const wrappedSelector = (others: Others<TPresence, TUserMeta>) => {
+      const other = others.find((other) => other.connectionId === connectionId)
+      return other !== undefined ? selector(other) : NOT_FOUND
+    }
+
+    const wrappedIsEqual = (prev: T | NotFound, curr: T | NotFound): boolean => {
+      if (prev === NOT_FOUND || curr === NOT_FOUND) {
+        return prev === curr
+      }
+
+      const eq = isEqual ?? Object.is
+      return eq(prev, curr)
+    }
+
+    const other = useOthersSuspense(wrappedSelector, wrappedIsEqual)
+
+    createEffect(() => {
+      if (other() === NOT_FOUND) {
+        throw new Error(`No such other user with connection id ${connectionId} exists`)
+      }
+    })
+
+    return other as Resource<T>
+  }
+
+  function useSelfSuspense(): Resource<User<TPresence, TUserMeta>>
+  function useSelfSuspense<T>(
+    selector: (me: User<TPresence, TUserMeta>) => T,
+    isEqual?: (prev: T | null, curr: T | null) => boolean,
+  ): Resource<T>
+  function useSelfSuspense<T>(
+    maybeSelector?: (me: User<TPresence, TUserMeta>) => T,
+    isEqual?: (prev: T | null, curr: T | null) => boolean,
+  ): Resource<T | User<TPresence, TUserMeta>> {
+    type Snapshot = User<TPresence, TUserMeta>
+    type Selection = T
+
+    const room = useRoom()
+
+    const selector = maybeSelector ?? (identity as (me: User<TPresence, TUserMeta>) => T)
+
+    const wrappedSelector = (me: Snapshot): Selection => selector(me)
+
+    const [self, { mutate }] = createResource(
+      () =>
+        new Promise<T>((res) => {
+          if (room.isSelfAware()) res(wrappedSelector(room.getSelf()!))
+          const unsub = room.events.connection.subscribeOnce(() => {
+            res(wrappedSelector(room.getSelf()!))
+          })
+
+          onCleanup(() => unsub())
+        }),
+    )
+
+    function onChange(): void {
+      const newSelf = wrappedSelector(room.getSelf()!)
+      if (!isEqual || !isEqual(self()!, newSelf)) {
+        mutate(() => newSelf)
+      }
+    }
+
+    const unsub1 = room.events.me.subscribe(onChange)
+    const unsub2 = room.events.connection.subscribe(onChange)
+
+    onCleanup(() => {
+      unsub1()
+      unsub2()
+    })
+
+    return self
+  }
+
+  function useStorageSuspense<T>(
+    selector: (root: ToImmutable<TStorage>) => T,
+    isEqual?: (prev: T | null, curr: T | null) => boolean,
+  ): Resource<T> {
+    type Snapshot = ToImmutable<TStorage>
+    type Selection = T
+
+    const room = useRoom()
+
+    const wrappedSelector = (root: Snapshot): Selection => selector(root)
+
+    const getSnapshot = (): Snapshot => {
+      const imm = room.getStorageSnapshot()!.toImmutable()
+      return imm as ToImmutable<TStorage>
+    }
+
+    const [storage, { mutate }] = createResource(
+      () =>
+        new Promise<T>((res) => {
+          if (room.getStorageSnapshot()) res(wrappedSelector(getSnapshot()))
+          const unsub = room.events.storageDidLoad.subscribeOnce(() => {
+            res(wrappedSelector(getSnapshot()))
+          })
+
+          onCleanup(() => unsub())
+        }),
+    )
+
+    createEffect(() => {
+      if (storage.loading) return
+
+      const unsub = room.subscribe(
+        room.getStorageSnapshot()!,
+        () => {
+          const newStorage = wrappedSelector(getSnapshot())
+          if (!isEqual || !isEqual(storage()!, newStorage)) {
+            mutate(() => newStorage)
+          }
+        },
+        { isDeep: true },
+      )
+
+      onCleanup(() => unsub())
+    })
+
+    return storage
+  }
+
   return {
     RoomContext,
     RoomProvider,
@@ -417,5 +614,29 @@ export function createRoomContext<
     useCanUndo,
     useCanRedo,
     useBatch,
+
+    suspense: {
+      RoomContext,
+      RoomProvider,
+      useRoom,
+      useMyPresence,
+      useUpdateMyPresence,
+      useOthers: useOthersSuspense,
+      useOthersMapped: useOthersMappedSuspense,
+      useOthersConnectionIds: useOthersConnectionIdsSuspense,
+      useOther: useOtherSuspense,
+      useBroadcastEvent,
+      useErrorListener,
+      useEventListener,
+      useSelf: useSelfSuspense,
+      useStorage: useStorageSuspense,
+      useMutation,
+      useHistory,
+      useUndo,
+      useRedo,
+      useCanUndo,
+      useCanRedo,
+      useBatch,
+    },
   }
 }
