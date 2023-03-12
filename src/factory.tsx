@@ -9,7 +9,7 @@ import type {
   LsonObject,
   Others,
   Room,
-  User
+  User,
 } from '@liveblocks/client'
 import { shallow } from '@liveblocks/client'
 import type { RoomInitializers, ToImmutable } from '@liveblocks/core'
@@ -21,7 +21,7 @@ import {
   createSignal,
   onCleanup,
   Resource,
-  useContext
+  useContext,
 } from 'solid-js'
 import type { MutationContext, OmitFirstArg, RoomContextBundle, RoomProviderProps } from './types'
 
@@ -401,6 +401,15 @@ export function createRoomContext<
   // Suspense
   ////////////////////////////////////////////////////////////////////////////////////////
 
+  function ensureNotServerSide(): void {
+    // Error early if suspense is used in a server-side context
+    if (typeof window === 'undefined') {
+      throw new Error(
+        'You cannot use the Suspense version of this hook on the server side. Make sure to only call them on the client side.\nFor tips, see https://github.com/tmns/solid-liveblocks#SSR',
+      )
+    }
+  }
+
   function useOthersSuspense(): Resource<Others<TPresence, TUserMeta>>
   function useOthersSuspense<T>(
     selector: (others: Others<TPresence, TUserMeta>) => T,
@@ -410,6 +419,8 @@ export function createRoomContext<
     selector?: (others: Others<TPresence, TUserMeta>) => T,
     isEqual?: (prev: T, curr: T) => boolean,
   ): Resource<T | Others<TPresence, TUserMeta>> {
+    ensureNotServerSide()
+
     const room = useRoom()
 
     const select = selector ?? (identity as (others: Others<TPresence, TUserMeta>) => T)
@@ -427,13 +438,18 @@ export function createRoomContext<
         }),
     )
 
-    const unsubscribe = room.subscribe('others', (others) => {
-      const selectedState = select(others)
-      if (!isEqual || !isEqual(state()!, selectedState)) {
-        mutate(() => selectedState)
-      }
+    createEffect(() => {
+      if (state.loading) return
+
+      const unsubscribe = room.subscribe('others', (others) => {
+        const selectedState = select(others)
+        if (!isEqual || !isEqual(state()!, selectedState)) {
+          mutate(() => selectedState)
+        }
+      })
+
+      onCleanup(() => unsubscribe())
     })
-    onCleanup(() => unsubscribe())
 
     return state
   }
@@ -446,6 +462,8 @@ export function createRoomContext<
     itemSelector: (other: User<TPresence, TUserMeta>) => T,
     itemIsEqual?: (prev: T, curr: T) => boolean,
   ): Resource<ReadonlyArray<readonly [connectionId: number, data: T]>> {
+    ensureNotServerSide()
+
     const wrappedSelector = (others: Others<TPresence, TUserMeta>) =>
       others.map((other) => [other.connectionId, itemSelector(other)] as const)
 
@@ -471,6 +489,8 @@ export function createRoomContext<
     selector: (other: User<TPresence, TUserMeta>) => T,
     isEqual?: (prev: T, curr: T) => boolean,
   ): Resource<T> {
+    ensureNotServerSide()
+
     const wrappedSelector = (others: Others<TPresence, TUserMeta>) => {
       const other = others.find((other) => other.connectionId === connectionId)
       return other !== undefined ? selector(other) : NOT_FOUND
@@ -505,6 +525,8 @@ export function createRoomContext<
     maybeSelector?: (me: User<TPresence, TUserMeta>) => T,
     isEqual?: (prev: T | null, curr: T | null) => boolean,
   ): Resource<T | User<TPresence, TUserMeta>> {
+    ensureNotServerSide()
+
     type Snapshot = User<TPresence, TUserMeta>
     type Selection = T
 
@@ -548,6 +570,8 @@ export function createRoomContext<
     selector: (root: ToImmutable<TStorage>) => T,
     isEqual?: (prev: T | null, curr: T | null) => boolean,
   ): Resource<T> {
+    ensureNotServerSide()
+
     type Snapshot = ToImmutable<TStorage>
     type Selection = T
 

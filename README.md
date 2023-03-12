@@ -12,14 +12,7 @@ const me = useSelf()
 createEffect(() => console.log('Me: ', me()))
 ```
 
-### Warning
-
-This is still very WIP and most notably does not include:
-
-- tests
-- SSR support
-
-So use at your own risk! And help is more than welcome on all of the above :)
+_Warning: I don't have tests in place yet so don't use for anything critical unless you're feeling particularly adventurous._
 
 ### Getting started
 
@@ -129,6 +122,24 @@ createEffect(() => {
   }
 })
 ```
+
+### SSR
+
+All non Suspense hooks are compatible with SSR out of the box. The approach for Suspense aware hooks is similar to that of the [official Liveblocks recommendation](https://liveblocks.io/docs/api-reference/liveblocks-react#suspense-avoid-ssr), which is to use a helper component, `ClientSideSuspense`, that acts as a drop in for Solid's `Suspense` and ensures only the fallback is ever rendered on the server:
+
+```tsx
+import { ClientSideSuspense } from 'solid-liveblocks'
+
+export default function Page() {
+  return (
+    <RoomProvider /* ... */>
+      <ClientSideSuspense fallback={<p>Loading...</p>}>{() => <App />}</ClientSideSuspense>
+    </RoomProvider>
+  )
+}
+```
+
+Note that if you attempt to use a Suspense aware hook without `ClientSideSuspense` via SSR, an error will be thrown on the server.
 
 ### License
 

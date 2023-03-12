@@ -1,3 +1,4 @@
+export { ClientSideSuspense } from './ClientSideSuspense'
 export { createRoomContext } from './factory'
 export type { MutationContext } from './types'
 
