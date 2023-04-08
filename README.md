@@ -12,8 +12,6 @@ const me = useSelf()
 createEffect(() => console.log('Me: ', me()))
 ```
 
-_Warning: I don't have tests in place yet so don't use for anything critical unless you're feeling particularly adventurous._
-
 ### Getting started
 
 First, install the package:
@@ -140,6 +138,14 @@ export default function Page() {
 ```
 
 Note that if you attempt to use a Suspense aware hook without `ClientSideSuspense` via SSR, an error will be thrown on the server.
+
+### Contributing
+
+If you come across any problems or see areas for improvement, feel free to create an issue. If you have new code to propose, first ensure all current tests pass with your changes. You can do so by executing the following:
+
+```bash
+npm test
+```
 
 ### License
 

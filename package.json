@@ -21,7 +21,9 @@
     "start": "pridepack start",
     "dev": "pridepack dev",
     "release": "bumpp --commit --push --tag && npm publish",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check:exports": "tsc scripts/check-factory-exports.ts && mv scripts/check-factory-exports.js scripts/cfe.cjs && node scripts/cfe.cjs",
+    "test": "jest --silent --verbose --color=always",
+    "test:watch": "jest --verbose --color=always --watch"
   },
   "dependencies": {
     "@liveblocks/client": "^1.0.1",
@@ -29,15 +31,29 @@
     "solid-js": "^1.6.11"
   },
   "devDependencies": {
+    "@babel/core": "^7.21.3",
+    "@babel/preset-env": "^7.21.4",
+    "@babel/preset-typescript": "^7.21.4",
+    "@solidjs/testing-library": "^0.6.1",
+    "@testing-library/jest-dom": "^5.16.5",
+    "@types/jest": "^29.5.0",
     "@types/node": "^18.14.6",
     "@typescript-eslint/eslint-plugin": "^5.54.0",
     "@typescript-eslint/parser": "^5.54.0",
+    "babel-jest": "^29.5.0",
+    "babel-preset-solid": "^1.6.16",
     "bumpp": "^9.0.0",
     "eslint": "^8.35.0",
+    "jest": "^29.5.0",
+    "jest-environment-jsdom": "^29.5.0",
+    "msw": "^1.1.0",
     "pridepack": "2.4.1",
+    "solid-jest": "^0.2.0",
     "solid-js": "^1.6.11",
+    "ts-jest": "^29.0.5",
     "tslib": "^2.5.0",
-    "typescript": "^4.9.5"
+    "typescript": "^4.9.5",
+    "whatwg-fetch": "^3.6.2"
   },
   "peerDependencies": {
     "solid-js": "^1.5.3"
